@@ -1,0 +1,28 @@
+# Model binaries (đã có sẵn trên board, không commit)
+*.so
+
+# Kết quả / dữ liệu sinh ra khi chạy
+work/
+work_*/
+out_*/
+*.raw
+results.json
+detections.json
+vis/
+crops/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+sample_images/
