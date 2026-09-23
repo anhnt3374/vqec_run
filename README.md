@@ -118,6 +118,8 @@ detect → decode → align/crop → embed.
 | `--conf X` | run, postprocess, all | `0.5` | Ngưỡng confidence của detector |
 | `--iou X` | run, postprocess, all | `0.45` | Ngưỡng IoU cho NMS |
 | `--keep-remote` | run, all | tắt | Giữ lại `/tmp/fr_tool/<session>` trên board để debug |
+| `--emb-mode M` | run, all | `arcface` | Kiểu I/O của model embedding: `arcface` hoặc `lvface` |
+| `--emb-model F` | run, all | `libarcface_mnet_w8a8.so` | File `.so` embedding. Nếu là file có trên host → tự upload lên board. Nếu không → tên file trong thư mục model của board, hoặc đường dẫn tuyệt đối trên board. Bắt buộc khi `--emb-mode lvface` |
 | `--output FILE` | postprocess, all | `<work>/results.json` | Đường dẫn file kết quả |
 | `--draw` | postprocess, all | tắt | Ghi ảnh vẽ bbox/kps vào `<work>/vis/` |
 
@@ -126,6 +128,18 @@ Ví dụ hạ ngưỡng để bắt mặt nhỏ/mờ hơn, và giữ file trên 
 ```bash
 python fr_tool.py all my_photos --work out_photos --conf 0.3 --keep-remote --draw
 ```
+
+Chạy embedding bằng LVFace thay cho ArcFace (file `.so` nằm trên host, tool tự upload lên
+`/tmp/fr_tool/<session>` và xoá sau khi chạy):
+
+```bash
+python fr_tool.py all my_photos --work out_lv --draw \
+    --emb-mode lvface --emb-model /mnt/d/Models/LVFace/2.28.2.241116/libLVFace_dlc_dynamic.so
+```
+
+Mode `lvface`: input `data` NCHW 1x3x112x112 (cùng crop căn chỉnh 112x112, cùng chuẩn hoá `x/127.5-1`),
+output `_964` 512 chiều. Ngưỡng cosine `0.41` là của ArcFace, LVFace cần tự chỉnh lại.
+Bước `postprocess` tự biết mode từ `work/emb_inputs/meta.json`, không cần truyền lại cờ.
 
 ---
 

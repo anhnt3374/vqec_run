@@ -86,16 +86,16 @@ def to_original(dets: np.ndarray, scale: float, width: int, height: int) -> np.n
     return d
 
 
-def load_embedding(result_dir: Path) -> np.ndarray:
-    for cand in (f"{EMB.output_name}.raw", "out0.raw"):
+def load_embedding(result_dir: Path, emb=EMB) -> np.ndarray:
+    for cand in (f"{emb.output_name}.raw", "out0.raw"):
         f = Path(result_dir) / cand
         if f.exists():
             v = np.fromfile(f, dtype=np.float32)
             break
     else:
         raise FileNotFoundError(f"no embedding raw in {result_dir}")
-    if v.size != EMB.dim:
-        raise ValueError(f"embedding has {v.size} values, expected {EMB.dim}")
+    if v.size != emb.dim:
+        raise ValueError(f"embedding has {v.size} values, expected {emb.dim}")
     if not np.all(np.isfinite(v)):
         raise ValueError("embedding contains non-finite values")
     return v / max(float(np.linalg.norm(v)), 1e-12)

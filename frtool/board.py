@@ -66,15 +66,17 @@ class Board:
     def run_model(self, model_so: str, input_name: str, raw_names: list[str],
                   remote_dir: str, log_level: str = "error") -> str:
         """Runs qnn-net-run on the DSP over raw_names (already uploaded to remote_dir/inputs).
+        model_so: file name in cfg.model_dir, or an absolute path on the board.
         Returns the remote output dir (contains Result_0..Result_{n-1})."""
         cfg = self.cfg
+        model_path = model_so if model_so.startswith("/") else posixpath.join(cfg.model_dir, model_so)
         in_dir = posixpath.join(remote_dir, "inputs")
         out_dir = posixpath.join(remote_dir, "outputs")
         list_path = posixpath.join(remote_dir, "input_list.txt")
         self.write_text(list_path, "".join(f"{input_name}:={posixpath.join(in_dir, n)}\n" for n in raw_names))
         self.sh(f"rm -rf {out_dir}; mkdir -p {out_dir}")
         cmd = (f"{cfg.env_prefix} cd {remote_dir} && {cfg.net_run}"
-               f" --model {cfg.model_dir}/{model_so} --backend {cfg.backend_path}"
+               f" --model {model_path} --backend {cfg.backend_path}"
                f" --input_list {list_path} --output_dir {out_dir} --log_level {log_level}"
                f" > {remote_dir}/net_run.log 2>&1")
         t0 = time.time()
@@ -83,7 +85,7 @@ class Board:
         _, log, _ = self.sh(f"tail -n 40 {remote_dir}/net_run.log", check=False)
         if rc != 0:
             raise RuntimeError(f"qnn-net-run failed (rc={rc}) for {model_so}:\n{log}")
-        print(f"[board] {model_so}: {len(raw_names)} inputs in {dt:.1f}s")
+        print(f"[board] {posixpath.basename(model_so)}: {len(raw_names)} inputs in {dt:.1f}s")
         return out_dir
 
     def cleanup(self, remote_dir: str) -> None:

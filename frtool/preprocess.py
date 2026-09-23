@@ -57,9 +57,12 @@ def align_face(img_bgr: np.ndarray, kps: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
 
 
-def emb_input_tensor(crop_rgb: np.ndarray) -> np.ndarray:
-    """-> float32 NHWC [1,112,112,3] normalized x/127.5-1."""
-    return (crop_rgb.astype(np.float32) / 127.5 - 1.0)[None]
+def emb_input_tensor(crop_rgb: np.ndarray, layout: str = "NHWC") -> np.ndarray:
+    """-> float32 [1,112,112,3] (NHWC) or [1,3,112,112] (NCHW) normalized x/127.5-1."""
+    x = crop_rgb.astype(np.float32) / 127.5 - 1.0
+    if layout == "NCHW":
+        x = x.transpose(2, 0, 1)
+    return np.ascontiguousarray(x[None])
 
 
 def preprocess_folder(image_dir: Path, out_dir: Path) -> dict:

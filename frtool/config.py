@@ -50,7 +50,8 @@ class DetConfig:
 class EmbConfig:
     input_name: str = "input_1"
     output_name: str = "embedding"
-    size: int = 112                         # NHWC 1x112x112x3, RGB, x/127.5-1
+    size: int = 112                         # 1x112x112x3, RGB, x/127.5-1
+    layout: str = "NHWC"                    # "NHWC" or "NCHW"
     dim: int = 512
     # ArcFace 112x112 5-point template (same values as FaceAlignment.cpp on the board)
     template: tuple = field(default_factory=lambda: (
@@ -61,4 +62,8 @@ class EmbConfig:
 BOARD = BoardConfig()
 DET = DetConfig()
 EMB = EmbConfig()
+# LVFace (QNN 2.28.2.241116): input "data" NCHW 1x3x112x112, output "_964" 1x512.
+# Model .so is not on the board by default; pass it with --emb-model.
+LVFACE = EmbConfig(input_name="data", output_name="_964", layout="NCHW")
+EMB_MODES = {"arcface": EMB, "lvface": LVFACE}
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")

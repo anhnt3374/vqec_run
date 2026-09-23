@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 
 from .board import Board
-from .config import BOARD, DET, EMB
+from .config import BOARD, DET, EMB_MODES
 from .postprocess import decode_scrfd, load_det_outputs, load_embedding, nms, to_original
 from .preprocess import align_face, emb_input_tensor, preprocess_folder
 
@@ -58,8 +58,9 @@ def postprocess_detection(work: Path, conf: float, iou: float) -> list[dict]:
     return results
 
 
-def preprocess_embedding(work: Path, results: list[dict]) -> list[tuple[int, int, str]]:
+def preprocess_embedding(work: Path, results: list[dict], mode: str = "arcface") -> list[tuple[int, int, str]]:
     """Align every detected face -> emb_inputs/<img>_f<k>.raw. Returns [(img_idx, face_idx, raw)]."""
+    emb = EMB_MODES[mode]
     emb_in = work / "emb_inputs"; shutil.rmtree(emb_in, ignore_errors=True); emb_in.mkdir(parents=True)
     crops = work / "crops"; shutil.rmtree(crops, ignore_errors=True); crops.mkdir()
     items = []
@@ -71,23 +72,29 @@ def preprocess_embedding(work: Path, results: list[dict]) -> list[tuple[int, int
         for fi, f in enumerate(r["faces"]):
             crop = align_face(img, np.array(f["kps"], np.float32))
             name = f"{stem}_f{fi}.raw"
-            emb_input_tensor(crop).tofile(emb_in / name)
+            emb_input_tensor(crop, emb.layout).tofile(emb_in / name)
             cv2.imwrite(str(crops / f"{stem}_f{fi}.png"), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
             items.append((ii, fi, name))
-    (emb_in / "meta.json").write_text(json.dumps({"input_name": EMB.input_name, "items": items}, indent=2))
+    (emb_in / "meta.json").write_text(json.dumps({"mode": mode, "input_name": emb.input_name, "items": items}, indent=2))
     return items
 
 
-def run_embedding(board: Board, work: Path, remote: str, keep: bool) -> Path:
+def run_embedding(board: Board, work: Path, remote: str, keep: bool, model: str = BOARD.emb_model) -> Path:
+    """model: .so file on the host (uploaded to the session dir), or a file name / absolute path on the board."""
     emb_in = work / "emb_inputs"
-    items = json.loads((emb_in / "meta.json").read_text())["items"]
+    meta = json.loads((emb_in / "meta.json").read_text())
+    items = meta["items"]
     local_out = work / "emb_outputs"
     shutil.rmtree(local_out, ignore_errors=True)
     if not items:
         local_out.mkdir(parents=True); return local_out
     rdir = posixpath.join(remote, "emb")
     board.put_dir(emb_in, posixpath.join(rdir, "inputs"))
-    out = board.run_model(BOARD.emb_model, EMB.input_name, [n for _, _, n in items], rdir)
+    if Path(model).is_file():
+        remote_model = posixpath.join(rdir, Path(model).name)
+        board.sftp.put(str(model), remote_model)
+        model = remote_model
+    out = board.run_model(model, meta["input_name"], [n for _, _, n in items], rdir)
     board.get_tree(out, local_out)
     if not keep:
         board.cleanup(rdir)
@@ -95,9 +102,10 @@ def run_embedding(board: Board, work: Path, remote: str, keep: bool) -> Path:
 
 
 def postprocess_embedding(work: Path, results: list[dict]) -> None:
-    items = json.loads((work / "emb_inputs" / "meta.json").read_text())["items"]
-    for k, (ii, fi, _) in enumerate(items):
-        v = load_embedding(work / "emb_outputs" / f"Result_{k}")
+    meta = json.loads((work / "emb_inputs" / "meta.json").read_text())
+    emb = EMB_MODES[meta.get("mode", "arcface")]
+    for k, (ii, fi, _) in enumerate(meta["items"]):
+        v = load_embedding(work / "emb_outputs" / f"Result_{k}", emb)
         results[ii]["faces"][fi]["embedding"] = [round(float(x), 6) for x in v]
 
 
@@ -115,14 +123,23 @@ def draw(results: list[dict], out_dir: Path) -> None:
         cv2.imwrite(str(out_dir / Path(r["image"]).name), img)
 
 
+def _emb_model(a) -> str:
+    if a.emb_model:
+        return a.emb_model
+    if a.emb_mode == "arcface":
+        return BOARD.emb_model
+    sys.exit(f"--emb-model is required for --emb-mode {a.emb_mode}")
+
+
 def cmd_run(a):
     work = Path(a.work); remote = _session_dir()
+    emb_model = _emb_model(a)
     with Board() as b:
         b.sh(f"mkdir -p {remote}")
         run_detection(b, work, remote, a.keep_remote)
         results = postprocess_detection(work, a.conf, a.iou)
-        preprocess_embedding(work, results)
-        run_embedding(b, work, remote, a.keep_remote)
+        preprocess_embedding(work, results, a.emb_mode)
+        run_embedding(b, work, remote, a.keep_remote, emb_model)
         if not a.keep_remote:
             b.cleanup(remote)
     (work / "detections.json").write_text(json.dumps(results, indent=2))
@@ -159,6 +176,11 @@ def main(argv=None):
             sp.add_argument("--iou", type=float, default=DET.nms_iou)
         if run:
             sp.add_argument("--keep-remote", action="store_true", help="keep /tmp files on the board")
+            sp.add_argument("--emb-mode", choices=sorted(EMB_MODES), default="arcface",
+                            help="embedding model I/O format (default arcface)")
+            sp.add_argument("--emb-model", help="embedding .so: host file (auto-uploaded), or file name in "
+                                                "the board model dir / absolute board path "
+                                                f"(default for arcface: {BOARD.emb_model})")
         if post:
             sp.add_argument("--output", help="results json path (default <work>/results.json)")
             sp.add_argument("--draw", action="store_true", help="write annotated images to <work>/vis")

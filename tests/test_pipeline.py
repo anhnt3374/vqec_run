@@ -74,3 +74,11 @@ def test_preprocess_folder_and_load_outputs(tmp_path):
     for i in range(9):
         np.zeros(4, np.float32).tofile(r / f"out{i}.raw")
     assert set(load_det_outputs(r)) == set(DET.output_names)
+
+
+def test_emb_tensor_nchw_for_lvface():
+    from frtool.config import LVFACE
+    crop = np.random.randint(0, 255, (112, 112, 3), np.uint8)
+    x = emb_input_tensor(crop, LVFACE.layout)
+    assert x.shape == (1, 3, 112, 112) and x.flags["C_CONTIGUOUS"]
+    assert np.allclose(x[0].transpose(1, 2, 0), emb_input_tensor(crop)[0])
